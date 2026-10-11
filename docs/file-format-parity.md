@@ -1,6 +1,6 @@
 # File-format parity with Microsoft Word
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** trivial (formatting revisions landed, #41; previously major: first version; every format Word reads or writes, measured from the readers and writers on origin/main) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4, plus Word for Windows' extra formats
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-11 · **Change:** minor (native drawing-level InkML preservation; previously trivial: formatting revisions landed, #41; previously major: first version; every format Word reads or writes, measured from the readers and writers on origin/main) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4, plus Word for Windows' extra formats
 
 Every format Word opens or saves, what WordCraft does with it, and how it's tested. Fidelity is the
 share of a typical real-world file's content and formatting that survives (read: shows correctly;
@@ -62,7 +62,8 @@ Measured by grepping `crates/docx/src/read` and `src/write` for the OOXML elemen
 | VML (`w:pict`, `v:shape`, `v:textbox`) | 🟡 | ❌ | Pictures and text boxes, best effort (#242) |
 | Charts (`c:chart`), SmartArt (`dgm`) | ✅ | ✅ | Drawn from the chart's cached data and SmartArt's stored drawing (#292); not editable. Saved back as read, with every part they reach (chart, embedded workbook, colours and style; diagram data, layout, quick style, colours and drawing) and their content types; a moved or resized one keeps its new frame, and a pasted copy gets its own parts (#319) |
 | OLE objects (`w:object`: embedded or linked files, ActiveX) | 🟡 | ✅ | Shown as their picture (VML or DrawingML); saved back whole with the embedding and picture parts, at the size, rotation and flips set in WordCraft (#319, #332). Can't be opened or edited |
-| Word ink (`w14:contentPart`, InkML), 3D models | ❌ | ❌ | Dropped on read, not preserved on save |
+| Native Word ink (`w14:contentPart`, InkML) | 🟡 | 🟡 | Drawing-level ink kept opaque with its InkML part, relationship and content type; run-level `mc:AlternateContent` keeps the native branch and VML picture fallback. Shows the preview or a missing-picture box. Repeated saves, copies, resize, rotation and namespace aliases tested with original fixtures. No native stroke rendering, eraser, conversion or replay; direct run-level content parts and ink nested in groups/canvases remain unsupported |
+| 3D models | ❌ | ❌ | Dropped on read, not preserved on save |
 | Equations (OMML `m:oMath`) | ✅ | ✅ | #191; manual breaks (`m:brk`) and the settings' `m:mathPr` wrapping options (#326) |
 | Themes, font table, settings, compatibility mode | ✅ | ✅ | Embedded fonts (`w:embedRegular`) not read |
 | Custom XML parts, document properties, bibliography sources | 🟡 | 🟡 | Custom properties round-trip; bibliography sources pending (#169) |
@@ -75,7 +76,7 @@ Measured by grepping `crates/docx/src/read` and `src/write` for the OOXML elemen
 1. A **real-world DOCX corpus** opened, rendered and round-tripped, compared page by page with
    Word (local only: Word output can't be committed; keep a manifest and our own renders).
 2. **Preserve what we can't render**: ink, group shapes and content controls survive a round trip
-   (keep the parts and the run). Charts, SmartArt and OLE objects do (#292, #319).
+   (keep the parts and the run). Charts, SmartArt and OLE objects do (#292, #319); drawing-level native ink now keeps its InkML and optional picture fallback.
 3. Formatting revisions and content controls read and written.
 4. Encrypted `.docx` opens with a password.
 
@@ -83,6 +84,7 @@ Measured by grepping `crates/docx/src/read` and `src/write` for the OOXML elemen
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-11 | minor | Native drawing-level ink and its picture fallback survive DOCX edits and repeated saves; rendering and editing InkML remain missing |
 | 2026-10-11 | trivial | Formatting revisions (`w:rPrChange`, `w:pPrChange`, table, row, cell, section and numbering changes) read and written (#41) |
 | 2026-10-10 | trivial | OLE objects turned or flipped in WordCraft keep the turn on save (VML `rotation`/`flip`, DrawingML `a:xfrm` with the rotated effect extent); test counts refreshed |
 | 2026-10-10 | trivial | Charts, SmartArt and OLE objects written back on save with their parts (#319); chart/SmartArt reading (#292) recorded |
