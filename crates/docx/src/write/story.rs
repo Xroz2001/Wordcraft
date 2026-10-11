@@ -415,25 +415,48 @@ impl Writer<'_> {
                 w.close("w:r");
                 self.rev_close(w, props);
             }
-            // A chart or diagram read from a file: its frame from the object's size and position,
+            // A chart, diagram or native ink: its frame from the object's size and position,
             // the graphic inside as read. Ones made some other way have nothing to write.
             InlineObject::Graphic { w: gw, h: gh, alt, float, graphic } => {
                 let Some(src) = graphic.source.as_deref() else { return };
-                let Some(inner) = self.embedded_xml(src, rels, None) else { return };
+                let ink = graphic.kind == wordcraft_doc::graphic::GraphicKind::Ink;
+                let resize = ink.then_some((*gw, *gh, float));
+                let Some(mut root) = self.embedded_tree(src, rels, resize) else { return };
+                if ink {
+                    Self::ink_transform(&mut root, (graphic.w, graphic.h), (*gw, *gh), float, 0);
+                }
+                // Ink may keep a whole run-level AlternateContent rather than only a:graphic.
+                // Rebuild its drawing frame, while the original fallback retains patched ids.
+                let alternate = (ink && root.name == "mc:AlternateContent").then_some(&root);
+                let fallback = alternate.and_then(|e| e.child("mc:Fallback"));
+                let native = alternate.and_then(|e| e.child("mc:Choice")).and_then(|e| e.find("a:graphic"));
+                if alternate.is_some() && native.is_none() {
+                    return;
+                }
                 self.rev_open(w, props);
                 w.open("w:r", &[]);
                 self.rpr(w, props);
+                if fallback.is_some() {
+                    w.open("mc:AlternateContent", &[]);
+                    w.open("mc:Choice", &[("Requires", "wpi")]);
+                }
                 w.open("w:drawing", &[]);
                 let docpr = self.next_docpr();
                 let name = match graphic.kind {
                     wordcraft_doc::graphic::GraphicKind::Chart => format!("Chart {docpr}"),
                     wordcraft_doc::graphic::GraphicKind::Diagram => format!("Diagram {docpr}"),
+                    wordcraft_doc::graphic::GraphicKind::Ink => format!("Ink {docpr}"),
                 };
                 self.drawing_open(w, float, *gw, *gh, &docpr, &name, alt);
                 w.empty("wp:cNvGraphicFramePr", &[]);
-                w.raw(&inner);
+                w.raw(&native.unwrap_or(&root).to_xml());
                 w.close(if float.wrap == Wrap::Inline { "wp:inline" } else { "wp:anchor" });
                 w.close("w:drawing");
+                if let Some(fallback) = fallback {
+                    w.close("mc:Choice");
+                    w.raw(&fallback.to_xml());
+                    w.close("mc:AlternateContent");
+                }
                 w.close("w:r");
                 self.rev_close(w, props);
             }
